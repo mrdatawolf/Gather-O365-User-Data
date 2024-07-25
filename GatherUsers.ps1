@@ -45,37 +45,49 @@ function Get-UserData {
     try {
         $credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $username, $securePassword
         Connect-AzureAD -Credential $credential 2>$null
-        Connect-ExchangeOnline -UserPrincipalName $username -ShowProgress $true
+        Connect-ExchangeOnline -Credential $credential -ShowBanner:$false
     }
     catch {
         Write-Host "Username/password login failed.  We will try again with a user prompted login" -ForegroundColor Yellow
         Connect-AzureAD
+        Connect-ExchangeOnline
     }
     $users = Get-AzureADUser -All $true
     $Data = @()
     foreach ($user in $users) {
-        $mfaDevices = Get-AzureADUserRegisteredDevice -ObjectId $user.ObjectId
-        $hasMFA = -not ($null -eq $mfaDevices)
-        $licenses = Get-AzureADSubscribedSku | Select SkuPartNumber, @{Name="ActiveUnits";Expression={$_.SkuCapacity}}, @{Name="ConsumedUnits";Expression={$_.ConsumedUnits}}
-        $licenseList = $licenses.SkuPartNumber -join '; '
-        $itsStatus = @{ $true = "Enabled"; $false = "Disabled"; "Unknown" = "Unknown" }
-        $popEnabled = "Unknown"
-        $owaEnabled = "Unknown"
-        $imapEnabled = "Unknown"
-        $otherEmailAppsEnabled = "Unknown"
-        $Data += New-Object PSObject -Property @{
-            GatherDate = Get-Date -Format "MM/dd/yyyy"
-            CompanyName = (Get-AzureADTenantDetail).DisplayName
-            UserPrincipalName = $user.UserPrincipalName
-            Licenses = $licenseList
-            MFA = $itsStatus[$hasMFA]
-            POP = $itsStatus[$popEnabled]
-            OWA = $itsStatus[$owaEnabled]
-            IMAP = $itsStatus[$imapEnabled]
-            OtherEmailApps = $itsStatus[$otherEmailAppsEnabled]
+        if ($null -ne $user) {
+            # Check if the user has a mailbox
+            $mailbox = Get-Mailbox -Identity $user.UserPrincipalName -ErrorAction SilentlyContinue
+            if ($null -eq $mailbox) {
+                Write-Host "No mailbox found for user $($user.UserPrincipalName)"
+                continue
+            }
+            $mfaDevices = Get-AzureADUserRegisteredDevice -ObjectId $user.ObjectId
+            $hasMFA = -not ($null -eq $mfaDevices)
+            $licenses = Get-AzureADSubscribedSku | Select-Object SkuPartNumber, @{Name="ActiveUnits";Expression={$_.SkuCapacity}}, @{Name="ConsumedUnits";Expression={$_.ConsumedUnits}}
+            $licenseList = $licenses.SkuPartNumber -join '; '
+            $itsStatus = @{ $true = "Enabled"; $false = "Disabled"; "Unknown" = "Unknown" }
+            $casMailbox = Get-CASMailbox -Identity $user.UserPrincipalName
+            $popEnabled = $casMailbox.POPEnabled
+            $owaEnabled = $casMailbox.OWAEnabled
+            $imapEnabled = $casMailbox.IMAPEnabled
+            $otherEmailAppsEnabled = $casMailbox.ActiveSyncEnabled
+            $Data += New-Object PSObject -Property @{
+                GatherDate = Get-Date -Format "MM/dd/yyyy"
+                CompanyName = (Get-AzureADTenantDetail).DisplayName
+                UserPrincipalName = $user.UserPrincipalName
+                Licenses = $licenseList
+                MFA = $itsStatus[$hasMFA]
+                POP = $itsStatus[$popEnabled]
+                OWA = $itsStatus[$owaEnabled]
+                IMAP = $itsStatus[$imapEnabled]
+                OtherEmailApps = $itsStatus[$otherEmailAppsEnabled]
+            }
         }
     }
+    
     Disconnect-AzureAD
+    Disconnect-ExchangeOnline -Confirm:$false
 
     return $Data
 }
