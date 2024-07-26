@@ -3,13 +3,30 @@ param (
     [string]$password,
     [string]$client
 )
-
+if (-not $scriptRoot) {
+    $scriptRoot = $PSScriptRoot
+}
+$envFilePath = Join-Path -Path $scriptRoot -ChildPath ".env"
+if (Test-Path $envFilePath) {
+    Get-Content $envFilePath | ForEach-Object {
+        if ($_ -match "^\s*([^#][^=]+?)\s*=\s*(.*?)\s*$") {
+            [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2])
+        }
+    }
+} else {
+    Write-Host "You need a .env setup before running this!" -ForegroundColor Red
+    Pause
+    exit
+}
+$baseFolderPath = [System.Environment]::GetEnvironmentVariable("BaseFolderPath")
+$aEmailsFilePath = [System.Environment]::GetEnvironmentVariable("AEmailsFilePath")
+$folderPath = Join-Path -Path $baseFolderPath -ChildPath "O365_data"
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    if ($null -ne $email -and $null -ne $password -and $null -ne $client) {
-        $arguments = "-File `"$($myinvocation.MyCommand.Definition)`" -email `"$email`" -password `"$password`" -client `"$client`""
+    if ($null -ne $email -and $null -ne $password) {
+        $arguments = "-File `"$($myinvocation.MyCommand.Definition)`" -email `"$email`" -password `"$password`" -client `"$client`" -scriptRoot `"$scriptRoot`""
         Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs
     } else {
-        $arguments = "-File `"$($myinvocation.MyCommand.Definition)`""
+        $arguments = "-File `"$($myinvocation.MyCommand.Definition)`" -scriptRoot `"$scriptRoot`""
         Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs
     }
     exit
@@ -21,12 +38,10 @@ function Test-ModuleInstallation {
     )
 
     if (!(Get-Module -ListAvailable -Name $ModuleName)) {
-        Write-Host "After the module is installed it may exit.  Just run it again to continue..."
         Write-Host "The $ModuleName module is not installed. Installing..." -ForegroundColor Yellow
-        Install-Module -Name $ModuleName
-        Write-Output "Finished installing. Please restart!"
+        Install-Module -Name $ModuleName -Force
         
-        exit
+        return $false
     } else {
         Write-Host "Importing $ModuleName..." -ForegroundColor Green
         Import-Module $ModuleName
@@ -34,6 +49,7 @@ function Test-ModuleInstallation {
 
     return $true
 }
+
 
 function Get-UserData {
     param (
@@ -112,12 +128,15 @@ function Export-UserData {
 }
 
 $dateForFileName = Get-Date -Format "MM_dd_yyyy"
-Test-ModuleInstallation -ModuleName "ImportExcel"
-Test-ModuleInstallation -ModuleName "AzureAD.Standard.Preview"
-Test-ModuleInstallation -ModuleName "ExchangeOnlineManagement"
-$baseFolderPath = "\\192.168.203.207\Shared Folders\PBIData"
-$excelFilePath = "$baseFolderPath\NetDoc\Manual\Admin Emails.xlsx"
-$folderPath = Join-Path -Path $baseFolderPath -ChildPath "O365_data"
+$modules = @("ImportExcel", "AzureAD.Standard.Preview", "ExchangeOnlineManagement")
+foreach ($module in $modules) {
+    $result = Test-ModuleInstallation -ModuleName $module
+    if (-not $result) {
+        Write-Host "Please restart the script after installing the required modules." -ForegroundColor Red
+        exit
+    }
+}
+Write-Host "All required modules are installed and imported."
 if (!(Test-Path -Path $folderPath)) { # Check if the folder exists, if not, create it
     New-Item -ItemType Directory -Path $folderPath | Out-Null
 }
@@ -128,9 +147,9 @@ if ($email -and $password) {
     Export-UserData -email $email -password $securePassword -clientName $clientName -baseFolderPath $baseFolderPath -dateForFileName $dateForFileName
 } else {
     try {
-        $excelData = Import-Excel -Path $excelFilePath
+        $excelData = Import-Excel -Path $aEmailsFilePath
     } Catch {
-        Write-Host "Failed to find the admin list here: $excelFilePath"
+        Write-Host "Failed to find the admin list here: $aEmailsFilePath"
         Pause
     }
     foreach ($row in $excelData) {
