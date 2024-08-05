@@ -14,9 +14,17 @@ if (Test-Path $envFilePath) {
         }
     }
 } else {
-    Write-Host "You need a .env setup before running this!" -ForegroundColor Red
-    Pause
-    exit
+    Write-Host "You need a .env. I will create one with the dfault locations of C:\temp" -ForegroundColor Red
+    # Create the .env file and add the required content
+    $envContent = @"
+BaseFolderPath=C:\temp
+AEmailsFilePath=C:\temp
+"@
+    Set-Content -Path $envFilePath -Value $envContent
+    Write-Host ".env file created with default values." -ForegroundColor Green
+    # Optionally, you can set the environment variables immediately after creating the file
+    [System.Environment]::SetEnvironmentVariable("BaseFolderPath", "C:\temp")
+    [System.Environment]::SetEnvironmentVariable("AEmailsFilePath", "C:\temp")
 }
 $baseFolderPath = [System.Environment]::GetEnvironmentVariable("BaseFolderPath")
 $aEmailsFilePath = [System.Environment]::GetEnvironmentVariable("AEmailsFilePath")
@@ -128,7 +136,7 @@ function Export-UserData {
 }
 
 $dateForFileName = Get-Date -Format "MM_dd_yyyy"
-$modules = @("ImportExcel", "AzureAD.Standard.Preview", "ExchangeOnlineManagement")
+$modules = @("ActiveDirectory", "GroupPolicy")
 foreach ($module in $modules) {
     $result = Test-ModuleInstallation -ModuleName $module
     if (-not $result) {
