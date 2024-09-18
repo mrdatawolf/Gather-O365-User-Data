@@ -14,7 +14,7 @@ if (Test-Path $envFilePath) {
         }
     }
 } else {
-    Write-Host "You need a .env. I will create one with the dfault locations of C:\temp" -ForegroundColor Red
+    Write-Host "You need a .env. I will create one with the default location of C:\temp" -ForegroundColor Red
     # Create the .env file and add the required content
     $envContent = @"
 BaseFolderPath=C:\temp
@@ -29,16 +29,7 @@ AEmailsFilePath=C:\temp
 $baseFolderPath = [System.Environment]::GetEnvironmentVariable("BaseFolderPath")
 $aEmailsFilePath = [System.Environment]::GetEnvironmentVariable("AEmailsFilePath")
 $folderPath = Join-Path -Path $baseFolderPath -ChildPath "O365_data"
-if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    if ($null -ne $email -and $null -ne $password) {
-        $arguments = "-File `"$($myinvocation.MyCommand.Definition)`" -email `"$email`" -password `"$password`" -client `"$client`" -scriptRoot `"$scriptRoot`""
-        Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs
-    } else {
-        $arguments = "-File `"$($myinvocation.MyCommand.Definition)`" -scriptRoot `"$scriptRoot`""
-        Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs
-    }
-    exit
-}
+
 function Test-ModuleInstallation {
     param (
         [Parameter(Mandatory=$true)]
@@ -136,7 +127,7 @@ function Export-UserData {
 }
 
 $dateForFileName = Get-Date -Format "MM_dd_yyyy"
-$modules = @("ActiveDirectory", "GroupPolicy")
+$modules = @("ExchangeOnlineManagement")
 foreach ($module in $modules) {
     $result = Test-ModuleInstallation -ModuleName $module
     if (-not $result) {
